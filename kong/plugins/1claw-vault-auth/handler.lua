@@ -290,9 +290,7 @@ function OneclawVaultAuth:access(conf)
     local response_status = 200
     local response_body = result
     if type(result) == "table" then
-      if result.status_code then
-        response_status = result.status_code
-      end
+      response_status = result.status_code or result.status or response_status
       response_body = cjson.encode(result.body or result)
     else
       response_body = tostring(result)

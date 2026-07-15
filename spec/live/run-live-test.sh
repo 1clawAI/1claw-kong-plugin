@@ -72,22 +72,46 @@ echo "PASS: secret readable (value redacted in output)"
 SECRET_LEN=$(echo "$SECRET_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('value','')))")
 echo "  secret length: $SECRET_LEN chars"
 
-if [ -n "${ONECLAW_BINDING:-}" ]; then
+EXECUTION_AVAILABLE="${ONECLAW_EXECUTION_AVAILABLE:-0}"
+if [ -n "${ONECLAW_BINDING:-}" ] && [ "$EXECUTION_AVAILABLE" = "1" ]; then
   echo ""
-  echo "=== 3. Verify execute mode (optional) ==="
+  echo "=== 3. Direct API execute (real jsonplaceholder.typicode.com via 1Claw) ==="
   EXEC_RESP=$(curl -s -w "\n%{http_code}" -X POST "$API_BASE/v1/agents/$AGENT_ID/execute" \
     -H "Authorization: Bearer $ACCESS_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"binding\":\"$ONECLAW_BINDING\",\"intent_type\":\"http\",\"params\":{\"method\":\"GET\",\"path\":\"/\"}}")
+    -d "{\"binding\":\"$ONECLAW_BINDING\",\"intent_type\":\"http\",\"params\":{\"method\":\"GET\",\"path\":\"/todos/1\"}}")
   EXEC_CODE=$(echo "$EXEC_RESP" | tail -1)
   EXEC_JSON=$(echo "$EXEC_RESP" | sed '$d')
-  if [ "$EXEC_CODE" = "200" ]; then
-    echo "PASS: execute returned 200"
-    echo "$EXEC_JSON" | python3 -m json.tool | head -20
-  else
-    echo "WARN: execute returned $EXEC_CODE (needs execution_intents_enabled + binding)"
+  if [ "$EXEC_CODE" != "200" ]; then
+    echo "FAIL: execute returned $EXEC_CODE"
     echo "$EXEC_JSON"
+    exit 1
   fi
+  if echo "$EXEC_JSON" | python3 -c "
+import json, sys
+d = json.load(sys.stdin)
+r = d.get('result', {})
+if r.get('status') != 200:
+    sys.exit(1)
+body = r.get('body', {})
+if isinstance(body, str):
+    try:
+        body = json.loads(body)
+    except json.JSONDecodeError:
+        sys.exit(1)
+sys.exit(0 if body.get('id') == 1 and body.get('title') else 1)
+"; then
+    echo "PASS: 1Claw reached jsonplaceholder.typicode.com and returned todos/1"
+  else
+    echo "FAIL: unexpected execute response"
+    echo "$EXEC_JSON" | python3 -m json.tool | head -30
+    exit 1
+  fi
+elif [ "${ONECLAW_EXECUTION_AVAILABLE:-0}" != "1" ]; then
+  echo ""
+  echo "=== 3. Execute mode (skipped) ==="
+  echo "  tier=${ONECLAW_BILLING_TIER:-unknown}; needs Pro+ and execution_intents_enabled"
+  echo "  Re-run ./spec/live/bootstrap.sh after upgrading, or test vault mode only."
 fi
 
 echo ""
@@ -143,6 +167,82 @@ else
   docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" logs kong
   docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" down -v
   exit 1
+fi
+
+if [ -n "${ONECLAW_BINDING:-}" ] && [ "${ONECLAW_EXECUTION_AVAILABLE:-0}" = "1" ]; then
+  echo ""
+  echo "=== 5. Kong execute mode (1Claw calls jsonplaceholder, Kong returns result) ==="
+  docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" down -v 2>/dev/null || true
+
+  cat > "$SCRIPT_DIR/kong.live.yml" <<EOF
+_format_version: "3.0"
+services:
+  - name: live-upstream
+    url: http://httpbin:80
+    routes:
+      - name: live-route
+        paths:
+          - /live-test
+    plugins:
+      - name: 1claw-vault-auth
+        config:
+          agent_api_key: "$ONECLAW_AGENT_API_KEY"
+          agent_id: "${ONECLAW_AGENT_ID:-}"
+          oneclaw_api_base: "$API_BASE"
+          mode: vault
+          vault_id: "$ONECLAW_VAULT_ID"
+          secret_path: "$ONECLAW_SECRET_PATH"
+          injection_target: header
+          injection_key: X-Injected-Credential
+          cache_ttl_seconds: 30
+          fail_mode: close
+          connect_timeout_ms: 5000
+          read_timeout_ms: 10000
+
+  - name: live-execute
+    url: http://httpbin:80
+    routes:
+      - name: execute-todos-route
+        paths:
+          - /todos/1
+    plugins:
+      - name: 1claw-vault-auth
+        config:
+          agent_api_key: "$ONECLAW_AGENT_API_KEY"
+          agent_id: "${ONECLAW_AGENT_ID:-}"
+          oneclaw_api_base: "$API_BASE"
+          mode: execute
+          binding: "$ONECLAW_BINDING"
+          intent_type: http
+          cache_ttl_seconds: 0
+          fail_mode: close
+          connect_timeout_ms: 5000
+          read_timeout_ms: 15000
+EOF
+
+  docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" up -d --wait
+
+  EXEC_PROXY_RESP=$(curl -s -w "\n%{http_code}" "http://localhost:8000/todos/1")
+  EXEC_PROXY_CODE=$(echo "$EXEC_PROXY_RESP" | tail -1)
+  EXEC_PROXY_BODY=$(echo "$EXEC_PROXY_RESP" | sed '$d')
+
+  if [ "$EXEC_PROXY_CODE" != "200" ]; then
+    echo "FAIL: Kong execute mode returned $EXEC_PROXY_CODE"
+    echo "$EXEC_PROXY_BODY"
+    docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" logs kong
+    docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" down -v
+    exit 1
+  fi
+
+  if echo "$EXEC_PROXY_BODY" | python3 -c "import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get('id')==1 and d.get('title') else 1)"; then
+    echo "PASS: Kong execute mode returned live jsonplaceholder /todos/1 response"
+  else
+    echo "FAIL: execute response missing expected httpbin args"
+    echo "$EXEC_PROXY_BODY" | head -c 500
+    docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" logs kong
+    docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" down -v
+    exit 1
+  fi
 fi
 
 echo ""

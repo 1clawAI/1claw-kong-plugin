@@ -168,6 +168,55 @@ KONG_NGINX_PROXY_LUA_SSL_TRUSTED_CERTIFICATE=/etc/ssl/certs/ca-certificates.crt
 
 The live test `docker-compose.live.yml` includes these by default.
 
+### Live test: execute mode (real external API)
+
+Execute mode uses 1Claw **Execution Intents** — 1Claw makes the upstream HTTP call (e.g. `https://httpbin.org`), and Kong returns the result to the client. Kong does **not** proxy to the upstream in this mode.
+
+**Requirements:**
+
+| Requirement | Why |
+|-------------|-----|
+| **Pro+ plan** | Free tier blocks Execution Intents (`execution_intents_per_month: 0`) |
+| `execution_intents_enabled: true` on the agent | Bootstrap sets this automatically |
+| HTTP binding pointing at a real API | Bootstrap creates `kong-httpbin-live` → `https://httpbin.org` |
+| Human **JWT** for binding create | `1ck_` API keys work for vault/policy ops, but binding `POST` currently needs a dashboard JWT — add `ONECLAW_TEST_EMAIL` + `ONECLAW_TEST_PASSWORD` to `.env`, or paste `ONECLAW_HUMAN_TOKEN` |
+
+**Setup:**
+
+```bash
+# .env
+ONECLAW_API_KEY=1ck_...
+ONECLAW_TEST_EMAIL=you@example.com      # needed for binding create
+ONECLAW_TEST_PASSWORD=your-password
+
+./spec/live/bootstrap.sh
+source .kong-live-test.env
+
+# If ONECLAW_EXECUTION_AVAILABLE=1, run-live-test.sh also:
+#  - POST /v1/agents/{id}/execute → httpbin.org/get (direct API)
+#  - GET http://localhost:8000/get?source=kong-execute (Kong execute mode)
+./spec/live/run-live-test.sh
+```
+
+**Manual binding** (Dashboard → Agent → Execution Intents, or SDK):
+
+```json
+{
+  "name": "kong-httpbin-live",
+  "binding_type": "http",
+  "config": {
+    "base_url": "https://httpbin.org",
+    "auth_type": "none",
+    "allowed_hosts": ["httpbin.org"],
+    "allowed_paths": ["/*"]
+  }
+}
+```
+
+**Kong route tip:** Map paths that match the upstream API (e.g. Kong route `/get` → httpbin `/get`). The plugin forwards `kong.request.get_path()` to the binding unchanged.
+
+**Credential injection demo:** Create a binding with `auth_type: "bearer"` and `credential_source: { "type": "vault_ref", "vault_id": "...", "path": "integrations/my-api-key" }`, then execute against `https://httpbin.org/bearer` to verify the vault secret is injected server-side.
+
 ## Development
 
 ```
