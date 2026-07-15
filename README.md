@@ -141,6 +141,33 @@ cd spec/integration
 ./run-tests.sh
 ```
 
+### Live test against production (api.1claw.xyz)
+
+Create `.env` in the plugin root with your human API key:
+
+```bash
+ONECLAW_API_KEY=1ck_...
+ONECLAW_API_URL=https://api.1claw.xyz   # optional
+```
+
+Then bootstrap a test agent/secret/policy and run the smoke test:
+
+```bash
+./spec/live/bootstrap.sh
+source .kong-live-test.env
+./spec/live/run-live-test.sh
+```
+
+**Kong TLS note:** When Kong runs in Docker and calls `https://api.1claw.xyz`, set these environment variables on the Kong container:
+
+```
+KONG_LUA_SSL_TRUSTED_CERTIFICATE=system,/etc/ssl/certs/ca-certificates.crt
+KONG_LUA_SSL_VERIFY_DEPTH=5
+KONG_NGINX_PROXY_LUA_SSL_TRUSTED_CERTIFICATE=/etc/ssl/certs/ca-certificates.crt
+```
+
+The live test `docker-compose.live.yml` includes these by default.
+
 ## Development
 
 ```

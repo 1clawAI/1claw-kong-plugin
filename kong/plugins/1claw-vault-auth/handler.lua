@@ -31,6 +31,19 @@ local function make_http_client(conf)
 end
 
 
+local function https_request_opts(conf, url, extra)
+  local opts = extra or {}
+  if url:match("^https:") then
+    local host = url:match("^https://([^/:]+)")
+    opts.ssl_verify = conf.tls_verify ~= false
+    if host then
+      opts.ssl_server_name = host
+    end
+  end
+  return opts
+end
+
+
 local function get_agent_token(conf)
   local cache_key = "token:" .. conf.agent_api_key
 
@@ -45,13 +58,14 @@ local function get_agent_token(conf)
     body_table.agent_id = conf.agent_id
   end
 
-  local res, err = httpc:request_uri(conf.oneclaw_api_base .. "/v1/auth/agent-token", {
+  local res, err = httpc:request_uri(conf.oneclaw_api_base .. "/v1/auth/agent-token",
+    https_request_opts(conf, conf.oneclaw_api_base, {
     method = "POST",
     headers = {
       ["Content-Type"] = "application/json",
     },
     body = cjson.encode(body_table),
-  })
+  }))
 
   if not res then
     return nil, nil, "token exchange failed: " .. (err or "unknown")
@@ -91,12 +105,13 @@ local function fetch_secret_from_vault(conf, token)
   local url = fmt("%s/v1/vaults/%s/secrets/%s", conf.oneclaw_api_base, conf.vault_id, conf.secret_path)
 
   local start_time = ngx_now()
-  local res, err = httpc:request_uri(url, {
+  local res, err = httpc:request_uri(url,
+    https_request_opts(conf, url, {
     method = "GET",
     headers = {
       ["Authorization"] = "Bearer " .. token,
     },
-  })
+  }))
   local resolve_ms = math.floor((ngx_now() - start_time) * 1000)
   kong.log.set_serialize_value("ai.1claw.resolve_latency_ms", resolve_ms)
 
@@ -167,14 +182,15 @@ local function execute_intent(conf, token, agent_id)
   local url = fmt("%s/v1/agents/%s/execute", conf.oneclaw_api_base, agent_id)
 
   local start_time = ngx_now()
-  local res, err = httpc:request_uri(url, {
+  local res, err = httpc:request_uri(url,
+    https_request_opts(conf, url, {
     method = "POST",
     headers = {
       ["Authorization"] = "Bearer " .. token,
       ["Content-Type"] = "application/json",
     },
     body = cjson.encode(execute_body),
-  })
+  }))
   local resolve_ms = math.floor((ngx_now() - start_time) * 1000)
   kong.log.set_serialize_value("ai.1claw.resolve_latency_ms", resolve_ms)
 

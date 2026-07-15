@@ -16,6 +16,9 @@ services:
       KONG_DECLARATIVE_CONFIG: /kong/kong.yml
       KONG_PLUGINS: bundled,1claw-vault-auth
       KONG_LUA_PACKAGE_PATH: /kong-plugin/?.lua;/kong-plugin/?/init.lua;;
+      KONG_LUA_SSL_TRUSTED_CERTIFICATE: system,/etc/ssl/certs/ca-certificates.crt
+      KONG_LUA_SSL_VERIFY_DEPTH: "5"
+      KONG_NGINX_PROXY_LUA_SSL_TRUSTED_CERTIFICATE: /etc/ssl/certs/ca-certificates.crt
       KONG_LOG_LEVEL: info
       KONG_PROXY_ACCESS_LOG: /dev/stdout
       KONG_PROXY_ERROR_LOG: /dev/stderr

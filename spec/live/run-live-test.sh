@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
 # Live production test for 1claw-vault-auth against api.1claw.xyz
 #
-# Required env vars:
-#   ONECLAW_AGENT_API_KEY   - ocv_... agent key
-#   ONECLAW_VAULT_ID        - vault UUID containing the test secret
-#   ONECLAW_SECRET_PATH     - secret path the agent can read (e.g. integrations/test-key)
+# Quick start (uses packages/1claw-kong-plugin/.env):
+#   cd packages/1claw-kong-plugin
+#   # .env needs ONECLAW_API_KEY=1ck_...
+#   ./spec/live/bootstrap.sh
+#   source .kong-live-test.env && ./spec/live/run-live-test.sh
 #
-# Optional:
-#   ONECLAW_AGENT_ID        - agent UUID (auto-resolved from key if omitted)
-#   ONECLAW_API_BASE        - default https://api.1claw.xyz
-#   ONECLAW_BINDING         - binding name for execute-mode test
+# Or set these manually:
+#   ONECLAW_AGENT_API_KEY, ONECLAW_VAULT_ID, ONECLAW_SECRET_PATH
 #
-# Execute mode also requires execution_intents_enabled on the agent and a configured binding.
-#
-# Usage:
-#   export ONECLAW_AGENT_API_KEY=ocv_...
-#   export ONECLAW_VAULT_ID=...
-#   export ONECLAW_SECRET_PATH=integrations/my-test-key
-#   ./run-live-test.sh
-
 set -euo pipefail
 
-: "${ONECLAW_AGENT_API_KEY:?Set ONECLAW_AGENT_API_KEY}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+if [ -f "$PLUGIN_ROOT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$PLUGIN_ROOT/.env"
+  set +a
+fi
+
+if [ -z "${ONECLAW_AGENT_API_KEY:-}" ] && [ -f "$PLUGIN_ROOT/.kong-live-test.env" ]; then
+  # shellcheck disable=SC1091
+  source "$PLUGIN_ROOT/.kong-live-test.env"
+fi
+
+: "${ONECLAW_AGENT_API_KEY:?Run ./spec/live/bootstrap.sh first or set ONECLAW_AGENT_API_KEY}"
 : "${ONECLAW_VAULT_ID:?Set ONECLAW_VAULT_ID}"
 : "${ONECLAW_SECRET_PATH:?Set ONECLAW_SECRET_PATH}"
 

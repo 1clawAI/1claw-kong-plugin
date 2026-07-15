@@ -123,6 +123,12 @@ return {
               between = { 100, 30000 },
             },
           },
+          {
+            tls_verify = {
+              type = "boolean",
+              default = true,
+            },
+          },
         },
 
         entity_checks = {
