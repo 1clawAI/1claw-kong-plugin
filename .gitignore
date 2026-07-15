@@ -1,0 +1,8 @@
+*.rock
+*.src.rock
+.luarocks/
+luarocks.lock
+lua_modules/
+.luacov
+luacov.stats.out
+luacov.report.out

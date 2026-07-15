@@ -1,0 +1,48 @@
+name: Release to LuaRocks
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Lua and LuaRocks
+        uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.1"
+
+      - uses: leafo/gh-actions-luarocks@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify rockspec version matches tag
+        run: |
+          ROCKSPEC_VERSION=$(grep 'version =' *.rockspec | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          TAG_VERSION="${{ steps.version.outputs.version }}-0"
+          if [ "$ROCKSPEC_VERSION" != "$TAG_VERSION" ]; then
+            echo "ERROR: Rockspec version ($ROCKSPEC_VERSION) does not match tag version ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Upload to LuaRocks
+        # Uncomment and configure when ready to publish:
+        # env:
+        #   LUAROCKS_API_KEY: ${{ secrets.LUAROCKS_API_KEY }}
+        # run: luarocks upload *.rockspec --api-key="$LUAROCKS_API_KEY"
+        run: |
+          echo "Release workflow triggered for version ${{ steps.version.outputs.version }}"
+          echo "To publish: set LUAROCKS_API_KEY secret and uncomment the upload step"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            *.rockspec

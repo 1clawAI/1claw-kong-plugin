@@ -1,0 +1,50 @@
+_format_version: "3.0"
+
+services:
+  - name: test-upstream
+    url: http://httpbin:80
+    routes:
+      - name: test-route
+        paths:
+          - /test
+    plugins:
+      - name: 1claw-vault-auth
+        config:
+          agent_api_key: "ocv_integration_test_key"
+          agent_id: "test-agent-uuid"
+          oneclaw_api_base: "http://mock-1claw:9876"
+          mode: vault
+          vault_id: "test-vault-uuid"
+          secret_path: "integrations/test-api-key"
+          injection_target: header
+          injection_key: X-Api-Key
+          injection_prefix: ""
+          cache_ttl_seconds: 5
+          fail_mode: close
+          connect_timeout_ms: 2000
+          read_timeout_ms: 3000
+
+  - name: test-execute
+    url: http://httpbin:80
+    routes:
+      - name: execute-route
+        paths:
+          - /exec-test
+    plugins:
+      - name: 1claw-vault-auth
+        config:
+          agent_api_key: "ocv_integration_test_key"
+          agent_id: "test-agent-uuid"
+          oneclaw_api_base: "http://mock-1claw:9876"
+          mode: execute
+          vault_id: ""
+          secret_path: ""
+          binding: "test-binding"
+          intent_type: http
+          injection_target: header
+          injection_key: Authorization
+          injection_prefix: ""
+          cache_ttl_seconds: 0
+          fail_mode: close
+          connect_timeout_ms: 2000
+          read_timeout_ms: 5000

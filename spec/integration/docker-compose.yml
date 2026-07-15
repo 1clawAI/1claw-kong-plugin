@@ -1,0 +1,43 @@
+version: "3.8"
+
+services:
+  mock-1claw:
+    build:
+      context: ./mock-server
+    ports:
+      - "9876:9876"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9876/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  kong:
+    image: kong:3.9
+    depends_on:
+      mock-1claw:
+        condition: service_healthy
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong/kong.yml
+      KONG_PLUGINS: bundled,1claw-vault-auth
+      KONG_LUA_PACKAGE_PATH: /kong-plugin/?.lua;/kong-plugin/?/init.lua;;
+      KONG_LOG_LEVEL: info
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+    volumes:
+      - ../../kong:/kong-plugin/kong
+      - ./kong.yml:/kong/kong.yml:ro
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "kong", "health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  httpbin:
+    image: kennethreitz/httpbin
+    ports:
+      - "8080:80"
