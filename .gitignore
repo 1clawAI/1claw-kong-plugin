@@ -6,3 +6,4 @@ lua_modules/
 .luacov
 luacov.stats.out
 luacov.report.out
+spec/live/kong.live.yml

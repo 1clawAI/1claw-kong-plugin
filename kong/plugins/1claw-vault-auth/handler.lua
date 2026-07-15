@@ -213,8 +213,10 @@ local function inject_secret(conf, secret_value)
     kong.service.request.set_query(args)
   elseif conf.injection_target == "body" then
     local body = kong.request.get_raw_body() or ""
-    local parsed = cjson.decode(body)
-    if not parsed then parsed = {} end
+    local parsed = {}
+    if body ~= "" then
+      parsed = cjson.decode(body) or {}
+    end
     parsed[conf.injection_key] = value
     kong.service.request.set_raw_body(cjson.encode(parsed))
     kong.service.request.set_header("Content-Type", "application/json")

@@ -1,0 +1,144 @@
+#!/usr/bin/env bash
+# Live production test for 1claw-vault-auth against api.1claw.xyz
+#
+# Required env vars:
+#   ONECLAW_AGENT_API_KEY   - ocv_... agent key
+#   ONECLAW_VAULT_ID        - vault UUID containing the test secret
+#   ONECLAW_SECRET_PATH     - secret path the agent can read (e.g. integrations/test-key)
+#
+# Optional:
+#   ONECLAW_AGENT_ID        - agent UUID (auto-resolved from key if omitted)
+#   ONECLAW_API_BASE        - default https://api.1claw.xyz
+#   ONECLAW_BINDING         - binding name for execute-mode test
+#
+# Execute mode also requires execution_intents_enabled on the agent and a configured binding.
+#
+# Usage:
+#   export ONECLAW_AGENT_API_KEY=ocv_...
+#   export ONECLAW_VAULT_ID=...
+#   export ONECLAW_SECRET_PATH=integrations/my-test-key
+#   ./run-live-test.sh
+
+set -euo pipefail
+
+: "${ONECLAW_AGENT_API_KEY:?Set ONECLAW_AGENT_API_KEY}"
+: "${ONECLAW_VAULT_ID:?Set ONECLAW_VAULT_ID}"
+: "${ONECLAW_SECRET_PATH:?Set ONECLAW_SECRET_PATH}"
+
+API_BASE="${ONECLAW_API_BASE:-https://api.1claw.xyz}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+echo "=== 1. Verify agent token exchange ==="
+TOKEN_BODY=$(python3 -c "import json,os; print(json.dumps({'api_key': os.environ['ONECLAW_AGENT_API_KEY']} | ({'agent_id': os.environ['ONECLAW_AGENT_ID']} if os.environ.get('ONECLAW_AGENT_ID') else {})))")
+TOKEN_RESP=$(curl -s -w "\n%{http_code}" -X POST "$API_BASE/v1/auth/agent-token" \
+  -H "Content-Type: application/json" \
+  -d "$TOKEN_BODY")
+TOKEN_CODE=$(echo "$TOKEN_RESP" | tail -1)
+TOKEN_JSON=$(echo "$TOKEN_RESP" | sed '$d')
+
+if [ "$TOKEN_CODE" != "200" ]; then
+  echo "FAIL: agent-token returned $TOKEN_CODE"
+  echo "$TOKEN_JSON"
+  exit 1
+fi
+echo "PASS: agent-token exchange"
+
+AGENT_ID=$(echo "$TOKEN_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('agent_id',''))")
+ACCESS_TOKEN=$(echo "$TOKEN_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['access_token'])")
+echo "  agent_id: $AGENT_ID"
+
+echo ""
+echo "=== 2. Verify vault secret read (what Kong will fetch) ==="
+SECRET_RESP=$(curl -s -w "\n%{http_code}" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  "$API_BASE/v1/vaults/$ONECLAW_VAULT_ID/secrets/$ONECLAW_SECRET_PATH")
+SECRET_CODE=$(echo "$SECRET_RESP" | tail -1)
+SECRET_JSON=$(echo "$SECRET_RESP" | sed '$d')
+
+if [ "$SECRET_CODE" != "200" ]; then
+  echo "FAIL: secret read returned $SECRET_CODE"
+  echo "$SECRET_JSON"
+  echo "Ensure the agent has a read policy on this vault/path."
+  exit 1
+fi
+echo "PASS: secret readable (value redacted in output)"
+SECRET_LEN=$(echo "$SECRET_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('value','')))")
+echo "  secret length: $SECRET_LEN chars"
+
+if [ -n "${ONECLAW_BINDING:-}" ]; then
+  echo ""
+  echo "=== 3. Verify execute mode (optional) ==="
+  EXEC_RESP=$(curl -s -w "\n%{http_code}" -X POST "$API_BASE/v1/agents/$AGENT_ID/execute" \
+    -H "Authorization: Bearer $ACCESS_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{\"binding\":\"$ONECLAW_BINDING\",\"intent_type\":\"http\",\"params\":{\"method\":\"GET\",\"path\":\"/\"}}")
+  EXEC_CODE=$(echo "$EXEC_RESP" | tail -1)
+  EXEC_JSON=$(echo "$EXEC_RESP" | sed '$d')
+  if [ "$EXEC_CODE" = "200" ]; then
+    echo "PASS: execute returned 200"
+    echo "$EXEC_JSON" | python3 -m json.tool | head -20
+  else
+    echo "WARN: execute returned $EXEC_CODE (needs execution_intents_enabled + binding)"
+    echo "$EXEC_JSON"
+  fi
+fi
+
+echo ""
+echo "=== 4. Start Kong with plugin (vault mode smoke test) ==="
+docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" down -v 2>/dev/null || true
+
+cat > "$SCRIPT_DIR/kong.live.yml" <<EOF
+_format_version: "3.0"
+services:
+  - name: live-upstream
+    url: http://httpbin:80
+    routes:
+      - name: live-route
+        paths:
+          - /live-test
+    plugins:
+      - name: 1claw-vault-auth
+        config:
+          agent_api_key: "$ONECLAW_AGENT_API_KEY"
+          agent_id: "${ONECLAW_AGENT_ID:-}"
+          oneclaw_api_base: "$API_BASE"
+          mode: vault
+          vault_id: "$ONECLAW_VAULT_ID"
+          secret_path: "$ONECLAW_SECRET_PATH"
+          injection_target: header
+          injection_key: X-Injected-Credential
+          cache_ttl_seconds: 30
+          fail_mode: close
+          connect_timeout_ms: 5000
+          read_timeout_ms: 10000
+EOF
+
+docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" up -d --wait
+
+echo "Hitting Kong proxy (should inject secret into httpbin)..."
+PROXY_RESP=$(curl -s -w "\n%{http_code}" http://localhost:8000/live-test/headers)
+PROXY_CODE=$(echo "$PROXY_RESP" | tail -1)
+PROXY_BODY=$(echo "$PROXY_RESP" | sed '$d')
+
+if [ "$PROXY_CODE" != "200" ]; then
+  echo "FAIL: Kong proxy returned $PROXY_CODE"
+  echo "$PROXY_BODY"
+  docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" logs kong
+  docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" down -v
+  exit 1
+fi
+
+if echo "$PROXY_BODY" | grep -qi "X-Injected-Credential"; then
+  echo "PASS: Kong injected credential header into upstream"
+else
+  echo "FAIL: injected header not found in upstream echo"
+  echo "$PROXY_BODY"
+  docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" logs kong
+  docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" down -v
+  exit 1
+fi
+
+echo ""
+echo "=== All live tests passed ==="
+docker compose -f "$SCRIPT_DIR/docker-compose.live.yml" down -v

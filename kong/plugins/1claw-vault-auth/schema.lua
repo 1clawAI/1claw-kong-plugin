@@ -88,7 +88,7 @@ return {
           {
             injection_prefix = {
               type = "string",
-              default = "",
+              required = false,
             },
           },
 
