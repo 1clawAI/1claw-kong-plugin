@@ -1,6 +1,8 @@
 # 1claw-vault-auth
 
-A Kong Gateway plugin that resolves short-TTL credentials from [1Claw](https://1claw.xyz)'s HSM/MPC-backed vault at proxy time and injects them into upstream requests. The raw secret never appears in Kong's plugin config, logs, Konnect analytics, or error responses.
+> ⭐ **Star [1clawAI/agent-templates](https://github.com/1clawAI/agent-templates)** — ready-to-run agent templates wired to 1Claw. It is our single starred repo.
+
+A Kong Gateway plugin that resolves short-TTL credentials from [1Claw](https://1claw.co)'s HSM/MPC-backed vault at proxy time and injects them into upstream requests. The raw secret never appears in Kong's plugin config, logs, Konnect analytics, or error responses.
 
 ## How it works
 
@@ -85,7 +87,7 @@ curl -X POST http://localhost:8001/services/my-service/plugins \
 |-------|------|----------|---------|-------------|
 | `agent_api_key` | string | yes | — | 1Claw agent API key (`ocv_...`). **Referenceable** — use `{vault://...}` |
 | `agent_id` | string | no | — | Agent UUID. If omitted, auto-resolved from key exchange |
-| `oneclaw_api_base` | string | no | `https://api.1claw.xyz` | 1Claw API base URL |
+| `oneclaw_api_base` | string | no | `https://api.1claw.co` | 1Claw API base URL |
 | `mode` | string | no | `vault` | `vault` or `execute` |
 | `vault_id` | string | vault mode | — | 1Claw vault UUID containing the secret |
 | `secret_path` | string | vault mode | — | Path to the secret within the vault |
@@ -141,13 +143,13 @@ cd spec/integration
 ./run-tests.sh
 ```
 
-### Live test against production (api.1claw.xyz)
+### Live test against production (api.1claw.co)
 
 Create `.env` in the plugin root with your human API key:
 
 ```bash
 ONECLAW_API_KEY=1ck_...
-ONECLAW_API_URL=https://api.1claw.xyz   # optional
+ONECLAW_API_URL=https://api.1claw.co   # optional
 ```
 
 Then bootstrap a test agent/secret/policy and run the smoke test:
@@ -158,7 +160,7 @@ source .kong-live-test.env
 ./spec/live/run-live-test.sh
 ```
 
-**Kong TLS note:** When Kong runs in Docker and calls `https://api.1claw.xyz`, set these environment variables on the Kong container:
+**Kong TLS note:** When Kong runs in Docker and calls `https://api.1claw.co`, set these environment variables on the Kong container:
 
 ```
 KONG_LUA_SSL_TRUSTED_CERTIFICATE=system,/etc/ssl/certs/ca-certificates.crt
