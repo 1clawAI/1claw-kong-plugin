@@ -24,7 +24,7 @@ fi
 
 : "${ONECLAW_API_KEY:?Set ONECLAW_API_KEY in packages/1claw-kong-plugin/.env}"
 
-API="${ONECLAW_API_URL:-https://api.1claw.xyz}"
+API="${ONECLAW_API_URL:-https://api.1claw.co}"
 AGENT_NAME="${ONECLAW_TEST_AGENT_NAME:-kong-plugin-live-test}"
 SECRET_PATH="${ONECLAW_SECRET_PATH:-integrations/kong-plugin-test}"
 
@@ -33,7 +33,7 @@ export PLUGIN_ROOT
 python3 <<PY
 import json, os, subprocess, sys, uuid
 
-api = os.environ.get("ONECLAW_API_URL", "https://api.1claw.xyz")
+api = os.environ.get("ONECLAW_API_URL", "https://api.1claw.co")
 token = os.environ["ONECLAW_API_KEY"]
 human_token = token  # 1ck_ key works for most endpoints; binding POST needs JWT (see below)
 agent_name = os.environ.get("ONECLAW_TEST_AGENT_NAME", "kong-plugin-live-test")

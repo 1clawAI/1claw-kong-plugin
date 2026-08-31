@@ -31,7 +31,7 @@ fi
 : "${ONECLAW_VAULT_ID:?Set ONECLAW_VAULT_ID}"
 : "${ONECLAW_SECRET_PATH:?Set ONECLAW_SECRET_PATH}"
 
-API_BASE="${ONECLAW_API_BASE:-https://api.1claw.xyz}"
+API_BASE="${ONECLAW_API_BASE:-https://api.1claw.co}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
