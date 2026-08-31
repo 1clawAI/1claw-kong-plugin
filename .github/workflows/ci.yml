@@ -47,7 +47,12 @@ jobs:
         run: |
           busted --verbose spec/unit/
         env:
-          LUA_PATH: "./kong/?.lua;./kong/?/init.lua;./spec/?.lua;$LUA_PATH"
+          # Modules are named kong.plugins.<name>.handler, so the search
+          # path has to be rooted at the repo, not at kong/ — the old
+          # prefix resolved them to ./kong/kong/plugins/... The trailing
+          # ";;" restores the default paths; a literal "$LUA_PATH" does
+          # not, because Actions env values are not shell-expanded.
+          LUA_PATH: "./?.lua;./?/init.lua;./spec/?.lua;;"
 
   integration-tests:
     runs-on: ubuntu-latest

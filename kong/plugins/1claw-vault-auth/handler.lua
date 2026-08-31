@@ -288,7 +288,7 @@ function OneclawVaultAuth:access(conf)
     -- In execute mode, return the 1Claw response directly to the client.
     -- Kong does not proxy upstream; 1Claw already did.
     local response_status = 200
-    local response_body = result
+    local response_body
     if type(result) == "table" then
       response_status = result.status_code or result.status or response_status
       response_body = cjson.encode(result.body or result)

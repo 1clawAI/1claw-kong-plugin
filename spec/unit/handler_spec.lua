@@ -64,7 +64,7 @@ local mock_http = {
   new = function()
     return {
       set_timeouts = function() end,
-      request_uri = function(self, url, opts)
+      request_uri = function(_, url, _)
         for _, entry in ipairs(mock_http_responses) do
           if url:find(entry.pattern, 1, true) then
             return entry.response, entry.err
@@ -81,7 +81,7 @@ local mock_lru_store = {}
 local mock_lrucache = {
   new = function()
     return {
-      get = function(self, key)
+      get = function(_, key)
         local entry = mock_lru_store[key]
         if entry and entry.expires_at > ngx.now() then
           return entry.value
@@ -89,7 +89,7 @@ local mock_lrucache = {
         mock_lru_store[key] = nil
         return nil
       end,
-      set = function(self, key, value, ttl)
+      set = function(_, key, value, ttl)
         mock_lru_store[key] = { value = value, expires_at = ngx.now() + (ttl or 60) }
       end,
     }, nil
